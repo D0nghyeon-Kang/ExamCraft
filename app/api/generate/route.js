@@ -35,7 +35,7 @@ export async function POST(req) {
       });
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'API 키가 설정되지 않았습니다. Vercel 환경변수를 확인해주세요.' }), {
         status: 500,
@@ -51,22 +51,25 @@ export async function POST(req) {
       });
     }
 
-    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1200,
-        system: '당신은 수능 영어 문제 출제 전문가입니다. 주어진 영어 지문을 바탕으로 실제 수능 형식에 맞는 고품질 문제를 만들어주세요. 정답과 해설은 반드시 【정답】과 【해설】 형식으로 작성해주세요.',
-        messages: [{ role: 'user', content: `${prompt}\n\n[지문]\n${passage}` }],
-      }),
-    });
+    const systemPrompt = '당신은 수능 영어 문제 출제 전문가입니다. 주어진 영어 지문을 바탕으로 실제 수능 형식에 맞는 고품질 문제를 만들어주세요. 정답과 해설은 반드시 【정답】과 【해설】 형식으로 작성해주세요.';
 
-    const responseText = await anthropicRes.text();
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{
+            role: 'user',
+            parts: [{ text: `${prompt}\n\n[지문]\n${passage}` }],
+          }],
+          generationConfig: { maxOutputTokens: 1200 },
+        }),
+      }
+    );
+
+    const responseText = await geminiRes.text();
 
     if (!responseText) {
       return new Response(JSON.stringify({ error: 'API 응답이 비어있습니다.' }), {
@@ -85,14 +88,14 @@ export async function POST(req) {
       });
     }
 
-    if (!anthropicRes.ok) {
-      return new Response(JSON.stringify({ error: data.error?.message || `API 오류 (${anthropicRes.status})` }), {
+    if (!geminiRes.ok) {
+      return new Response(JSON.stringify({ error: data.error?.message || `API 오류 (${geminiRes.status})` }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const text = data.content?.map((c) => c.text || '').join('') || '';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     return new Response(JSON.stringify({ result: text }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
