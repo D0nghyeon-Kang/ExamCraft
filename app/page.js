@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import styles from './page.module.css';
 
 const QUESTION_TYPES = [
@@ -91,6 +91,10 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [generated, setGenerated] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef(null);
 
   const toggleType = (id) => {
     setSelected(prev => {
@@ -104,6 +108,51 @@ export default function Home() {
   const toggleAll = () => {
     if (selected.size === QUESTION_TYPES.length) setSelected(new Set());
     else setSelected(new Set(QUESTION_TYPES.map(t => t.id)));
+  };
+
+  const extractTextFromImage = useCallback(async (file) => {
+    if (!file || !file.type.startsWith('image/')) {
+      alert('이미지 파일만 업로드 가능합니다.');
+      return;
+    }
+    setIsExtracting(true);
+    setPreviewUrl(URL.createObjectURL(file));
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target.result.split(',')[1];
+      const mediaType = file.type;
+      try {
+        const res = await fetch('/api/extract-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: base64, mediaType }),
+        });
+        const data = await res.json();
+        if (data.text) {
+          setPassage(data.text);
+        } else {
+          alert('텍스트 추출에 실패했습니다: ' + (data.error || '알 수 없는 오류'));
+        }
+      } catch (err) {
+        alert('오류가 발생했습니다: ' + err.message);
+      } finally {
+        setIsExtracting(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) extractTextFromImage(file);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) extractTextFromImage(file);
   };
 
   const generate = useCallback(async () => {
@@ -147,7 +196,6 @@ export default function Home() {
     setIsGenerating(false);
   }, [passage, selected, isGenerating]);
 
-  const selectedTypes = QUESTION_TYPES.filter(t => selected.has(t.id));
   const generatedTypes = QUESTION_TYPES.filter(t => statuses[t.id]);
 
   return (
@@ -164,6 +212,51 @@ export default function Home() {
 
       <main className={styles.main}>
         <div className={styles.inputSection}>
+
+          {/* Image Upload */}
+          <div className={styles.panel}>
+            <label className={styles.panelLabel}>
+              <span>사진으로 지문 입력</span>
+              {isExtracting && <span className={styles.extractingBadge}>인식 중...</span>}
+            </label>
+            <div
+              className={`${styles.dropZone} ${dragOver ? styles.dragOver : ''} ${isExtracting ? styles.extracting : ''}`}
+              onClick={() => !isExtracting && fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+            >
+              {isExtracting ? (
+                <div className={styles.extractingState}>
+                  <div className={styles.spinner} />
+                  <span>이미지에서 텍스트 인식 중...</span>
+                </div>
+              ) : previewUrl ? (
+                <div className={styles.previewState}>
+                  <img src={previewUrl} alt="업로드된 이미지" className={styles.previewImg} />
+                  <span className={styles.previewChange}>클릭하여 다른 이미지 선택</span>
+                </div>
+              ) : (
+                <div className={styles.dropZoneContent}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <span>이미지를 드래그하거나 클릭해서 업로드</span>
+                  <span className={styles.dropZoneSub}>교재 사진, 스캔본, 캡처 이미지 모두 가능 · JPG, PNG, WEBP</span>
+                </div>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+            />
+          </div>
+
+          {/* Text Input */}
           <div className={styles.panel}>
             <label className={styles.panelLabel}>
               <span>영어 지문 입력</span>
@@ -173,11 +266,12 @@ export default function Home() {
               className={styles.textarea}
               value={passage}
               onChange={e => setPassage(e.target.value)}
-              placeholder="여기에 영어 지문을 붙여넣으세요..."
+              placeholder="여기에 영어 지문을 직접 붙여넣거나, 위에서 이미지를 업로드하세요..."
               rows={8}
             />
           </div>
 
+          {/* Type Selector */}
           <div className={styles.panel}>
             <div className={styles.typeHeader}>
               <span className={styles.panelLabel}>문제 유형 선택</span>
@@ -202,7 +296,7 @@ export default function Home() {
           <button
             className={styles.generateBtn}
             onClick={generate}
-            disabled={isGenerating || selected.size === 0}
+            disabled={isGenerating || isExtracting || selected.size === 0}
           >
             {isGenerating
               ? `생성 중... (${progress.done} / ${progress.total})`
@@ -224,9 +318,7 @@ export default function Home() {
             <div className={styles.resultsHeader}>
               <h2 className={styles.resultsTitle}>생성된 문제</h2>
               {!isGenerating && (
-                <span className={styles.resultsMeta}>
-                  {progress.done}개 완료
-                </span>
+                <span className={styles.resultsMeta}>{progress.done}개 완료</span>
               )}
             </div>
             {generatedTypes.map(type => (

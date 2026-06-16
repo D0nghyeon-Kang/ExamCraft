@@ -23,57 +23,85 @@ const QUESTION_PROMPTS = {
   20: `다음 영어 지문을 읽고, "장문 독해 (2)" 유형의 수능 문제를 만들어주세요. 하나의 긴 지문을 바탕으로 3개의 문제를 만들어주세요: (1) 어휘 적절성 (2) 내용 일치 (3) 빈칸 추론. 정답과 해설도 포함해주세요.`,
 };
 
-export default async function handler(req) {
-  if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+export async function POST(req) {
+  try {
+    const body = await req.json();
+    const { passage, typeId } = body;
+
+    if (!passage || !typeId) {
+      return new Response(JSON.stringify({ error: '지문과 문제 유형을 입력해주세요.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'API 키가 설정되지 않았습니다. Vercel 환경변수를 확인해주세요.' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const prompt = QUESTION_PROMPTS[typeId];
+    if (!prompt) {
+      return new Response(JSON.stringify({ error: '알 수 없는 문제 유형입니다.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1200,
+        system: '당신은 수능 영어 문제 출제 전문가입니다. 주어진 영어 지문을 바탕으로 실제 수능 형식에 맞는 고품질 문제를 만들어주세요. 정답과 해설은 반드시 【정답】과 【해설】 형식으로 작성해주세요.',
+        messages: [{ role: 'user', content: `${prompt}\n\n[지문]\n${passage}` }],
+      }),
+    });
+
+    const responseText = await anthropicRes.text();
+
+    if (!responseText) {
+      return new Response(JSON.stringify({ error: 'API 응답이 비어있습니다.' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      return new Response(JSON.stringify({ error: 'API 응답 파싱 실패: ' + responseText.slice(0, 200) }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!anthropicRes.ok) {
+      return new Response(JSON.stringify({ error: data.error?.message || `API 오류 (${anthropicRes.status})` }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const text = data.content?.map((c) => c.text || '').join('') || '';
+    return new Response(JSON.stringify({ result: text }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  } catch (err) {
+    return new Response(JSON.stringify({ error: '서버 오류: ' + err.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
-
-  const { passage, typeId } = await req.json();
-
-  if (!passage || !typeId) {
-    return new Response(JSON.stringify({ error: '지문과 문제 유형을 입력해주세요.' }), { status: 400 });
-  }
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'API 키가 설정되지 않았습니다.' }), { status: 500 });
-  }
-
-  const prompt = QUESTION_PROMPTS[typeId];
-  if (!prompt) {
-    return new Response(JSON.stringify({ error: '알 수 없는 문제 유형입니다.' }), { status: 400 });
-  }
-
-  const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1200,
-      system: '당신은 수능 영어 문제 출제 전문가입니다. 주어진 영어 지문을 바탕으로 실제 수능 형식에 맞는 고품질 문제를 만들어주세요. 정답과 해설은 반드시 【정답】과 【해설】 형식으로 작성해주세요.',
-      messages: [
-        {
-          role: 'user',
-          content: `${prompt}\n\n[지문]\n${passage}`,
-        },
-      ],
-    }),
-  });
-
-  const data = await anthropicRes.json();
-
-  if (!anthropicRes.ok) {
-    return new Response(JSON.stringify({ error: data.error?.message || '문제 생성 실패' }), { status: 500 });
-  }
-
-  const text = data.content?.map((c) => c.text || '').join('') || '';
-
-  return new Response(JSON.stringify({ result: text }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }
