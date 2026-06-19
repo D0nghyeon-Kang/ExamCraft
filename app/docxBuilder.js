@@ -4,58 +4,81 @@ import {
 } from 'docx';
 import { saveAs } from 'file-saver';
 
-// Split AI output into question blocks.
+// Remove common markdown syntax / HTML entities that AI chat responses tend to include,
+// since the pasted text is meant to read as a clean document, not raw markdown.
+function stripMarkdown(line) {
+  let s = line;
+  s = s.replace(/^#{1,6}\s*/, '');                 // headings: ### Title -> Title
+  s = s.replace(/^```.*$/, '');                     // code fences
+  s = s.replace(/\*\*\*(.+?)\*\*\*/g, '$1');         // bold+italic ***text***
+  s = s.replace(/\*\*(.+?)\*\*/g, '$1');             // bold **text**
+  s = s.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '$1'); // italics *text*
+  s = s.replace(/^[-*]\s+(?=\S)/, '');               // leading markdown bullet "- " or "* "
+  s = s.replace(/`([^`]*)`/g, '$1');                 // inline code `text`
+  s = s.replace(/&apos;/g, "'");
+  s = s.replace(/&quot;/g, '"');
+  s = s.replace(/&amp;/g, '&');
+  s = s.replace(/&lt;/g, '<');
+  s = s.replace(/&gt;/g, '>');
+  return s.trim();
+}
+
+// Find the literal [문제 N] markers ExamCraft's prompts ask the AI to include,
+// and use them as the only valid split points. Anything before the first marker
+// (greetings, intros like "제시해주신 지문을 바탕으로...") is discarded entirely.
 function splitIntoBlocks(rawText) {
   const text = rawText.trim();
   if (!text) return [];
 
-  const isMeaningful = (s) => {
-    // A block must have more than just a title line / whitespace to count as real content.
-    const stripped = s.replace(/^\[문제\s*\d+\][^\n]*\n?/, '').trim();
-    return stripped.length > 0;
-  };
+  const markerRegex = /\[\s*문제\s*(\d+)\s*\][^\n]*/g;
+  const matches = [...text.matchAll(markerRegex)];
 
-  const bySeparator = text
-    .split(/\n-{3,}\n|\n={3,}\n/g)
-    .map(s => s.trim())
-    .filter(Boolean)
-    .filter(isMeaningful);
-  if (bySeparator.length > 1) return bySeparator;
+  if (matches.length === 0) {
+    return [text];
+  }
 
-  const byMarker = text
-    .split(/(?=\[문제\s*\d+\])/g)
-    .map(s => s.trim())
-    .filter(Boolean)
-    .filter(isMeaningful);
-  if (byMarker.length > 1) return byMarker;
-
-  return [text];
+  const blocks = [];
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i].index;
+    const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+    blocks.push(text.slice(start, end).trim());
+  }
+  return blocks;
 }
 
-// Split a single block into { title, body, answer } —
-// body = everything before 【정답】, answer = 【정답】 onward.
+// Split a single block (which starts with its own [문제 N] marker line) into
+// { title, body, answer }. The marker line itself becomes the title and is
+// removed from the body so it never appears twice.
 function splitBlock(block) {
   const lines = block.split('\n');
   let title = '';
-  let bodyLines = [];
-  let answerLines = [];
+  let titleConsumed = false;
+  const bodyLines = [];
+  const answerLines = [];
   let inAnswer = false;
 
   for (const rawLine of lines) {
-    const line = rawLine.trimEnd();
-    if (!title && /^\[문제\s*\d+\]/.test(line.trim())) {
-      title = line.trim();
+    const cleaned = stripMarkdown(rawLine.trimEnd());
+
+    if (!titleConsumed && /^\[\s*문제\s*\d+\s*\]/.test(cleaned)) {
+      title = cleaned;
+      titleConsumed = true;
       continue;
     }
-    if (line.includes('【정답】')) inAnswer = true;
-    if (inAnswer) answerLines.push(line);
-    else bodyLines.push(line);
+    if (cleaned.includes('【정답')) inAnswer = true;
+
+    if (inAnswer) answerLines.push(cleaned);
+    else bodyLines.push(cleaned);
   }
 
-  return { title, body: bodyLines.join('\n').trim(), answer: answerLines.join('\n').trim() };
+  return {
+    title,
+    body: bodyLines.join('\n').trim(),
+    answer: answerLines.join('\n').trim(),
+  };
 }
 
-function textParagraphs(text, { answerStyle = false } = {}) {
+function textParagraphs(text) {
   const paragraphs = [];
   const lines = text.split('\n');
 
@@ -65,7 +88,7 @@ function textParagraphs(text, { answerStyle = false } = {}) {
       paragraphs.push(new Paragraph({ children: [new TextRun('')] }));
       continue;
     }
-    if (line.includes('【정답】')) {
+    if (line.includes('【정답')) {
       paragraphs.push(new Paragraph({
         spacing: { before: 160 },
         children: [new TextRun({ text: line.trim(), bold: true, color: 'B30000' })],
@@ -75,7 +98,7 @@ function textParagraphs(text, { answerStyle = false } = {}) {
     if (line.includes('【해설】')) {
       paragraphs.push(new Paragraph({
         spacing: { before: 60 },
-        children: [new TextRun({ text: line.trim(), color: '444444' })],
+        children: [new TextRun({ text: line.trim(), bold: true, color: '444444' })],
       }));
       continue;
     }
@@ -87,11 +110,11 @@ function textParagraphs(text, { answerStyle = false } = {}) {
   return paragraphs;
 }
 
-function titleParagraph(title, number) {
+function titleParagraph(title, fallbackNumber) {
   return new Paragraph({
     heading: HeadingLevel.HEADING_2,
     spacing: { before: 280, after: 120 },
-    children: [new TextRun({ text: title || `문제 ${number}`, bold: true })],
+    children: [new TextRun({ text: title || `문제 ${fallbackNumber}`, bold: true })],
     border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '999999', space: 4 } },
   });
 }
