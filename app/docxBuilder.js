@@ -6,6 +6,8 @@ import { saveAs } from 'file-saver';
 
 // Remove common markdown syntax / HTML entities that AI chat responses tend to include,
 // since the pasted text is meant to read as a clean document, not raw markdown.
+// NOTE: double-underscore __text__ is intentionally NOT stripped here — it's parsed
+// separately into real Word underline formatting (see parseRuns).
 function stripMarkdown(line) {
   let s = line;
   s = s.replace(/^#{1,6}\s*/, '');                 // headings: ### Title -> Title
@@ -21,6 +23,21 @@ function stripMarkdown(line) {
   s = s.replace(/&lt;/g, '<');
   s = s.replace(/&gt;/g, '>');
   return s.trim();
+}
+
+// Parse a cleaned line into TextRun segments, converting __text__ into
+// real underlined runs instead of leaving the literal underscores in place.
+function parseRuns(line, extraProps = {}) {
+  const parts = line.split(/(__[^_]+__)/g).filter(s => s !== '');
+  if (parts.length === 0) return [new TextRun({ text: '', ...extraProps })];
+
+  return parts.map(part => {
+    const underlineMatch = part.match(/^__([^_]+)__$/);
+    if (underlineMatch) {
+      return new TextRun({ text: underlineMatch[1], underline: {}, ...extraProps });
+    }
+    return new TextRun({ text: part, ...extraProps });
+  });
 }
 
 // Find the literal [문제 N] markers ExamCraft's prompts ask the AI to include,
@@ -91,20 +108,20 @@ function textParagraphs(text) {
     if (line.includes('【정답')) {
       paragraphs.push(new Paragraph({
         spacing: { before: 160 },
-        children: [new TextRun({ text: line.trim(), bold: true, color: 'B30000' })],
+        children: parseRuns(line.trim(), { bold: true, color: 'B30000' }),
       }));
       continue;
     }
     if (line.includes('【해설】')) {
       paragraphs.push(new Paragraph({
         spacing: { before: 60 },
-        children: [new TextRun({ text: line.trim(), bold: true, color: '444444' })],
+        children: parseRuns(line.trim(), { bold: true, color: '444444' }),
       }));
       continue;
     }
     paragraphs.push(new Paragraph({
       spacing: { after: 60 },
-      children: [new TextRun({ text: line })],
+      children: parseRuns(line),
     }));
   }
   return paragraphs;
