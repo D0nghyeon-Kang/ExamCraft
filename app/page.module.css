@@ -507,3 +507,27 @@
   max-height: 400px;
   overflow-y: auto;
 }
+
+/* ── Download Button ── */
+.downloadBtn {
+  width: 100%;
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: #2b579a;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.3px;
+}
+.downloadBtn:hover:not(:disabled) { background: #1f4276; }
+.downloadBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.downloadHint {
+  font-size: 12px;
+  color: var(--text3);
+  text-align: center;
+  margin-top: -4px;
+}

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useRef } from 'react';
 import styles from './page.module.css';
+import { generateSplitDocx } from './docxBuilder';
 
 const QUESTION_TYPES = [
   { id: 1,  label: '글의 목적 파악' },
@@ -53,6 +54,8 @@ export default function Home() {
   const [selected, setSelected] = useState(new Set(QUESTION_TYPES.map(t => t.id)));
   const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [copied, setCopied] = useState(false);
+  const [aiResponse, setAiResponse] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -92,6 +95,21 @@ export default function Home() {
     await navigator.clipboard.writeText(generatedPrompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const downloadDocx = async () => {
+    if (!aiResponse.trim()) {
+      alert('AI가 만들어준 문제 답변을 먼저 붙여넣어주세요.');
+      return;
+    }
+    setIsDownloading(true);
+    try {
+      await generateSplitDocx(aiResponse, 'ExamCraft');
+    } catch (e) {
+      alert('워드 파일 생성 중 오류가 발생했습니다: ' + e.message);
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const extractTextFromImage = async (file) => {
@@ -212,6 +230,32 @@ export default function Home() {
               <pre className={styles.promptBox}>{generatedPrompt}</pre>
             </div>
           )}
+
+          {/* Step 4 — Paste AI response & download Word */}
+          <div className={styles.stepLabel}><span className={styles.stepNum}>4</span> AI 답변 붙여넣고 워드로 받기</div>
+
+          <div className={styles.panel}>
+            <label className={styles.panelLabel}>
+              <span>ChatGPT / Gemini / Claude가 만들어준 문제 답변 붙여넣기</span>
+              <span className={styles.charCount}>{aiResponse.length}자</span>
+            </label>
+            <textarea
+              className={styles.textarea}
+              value={aiResponse}
+              onChange={e => setAiResponse(e.target.value)}
+              placeholder="AI가 생성한 문제와 정답·해설 전체를 여기에 그대로 붙여넣으세요..."
+              rows={10}
+            />
+          </div>
+
+          <button
+            className={styles.downloadBtn}
+            onClick={downloadDocx}
+            disabled={isDownloading}
+          >
+            {isDownloading ? '워드 파일 만드는 중...' : '📄 문제지 + 해설지 워드(.docx) 2개 다운로드'}
+          </button>
+          <p className={styles.downloadHint}>문제만 담긴 파일과 정답·해설만 담긴 파일, 총 2개가 각각 다운로드됩니다</p>
         </div>
       </main>
 
