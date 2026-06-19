@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
 import styles from './page.module.css';
 
 const QUESTION_TYPES = [
@@ -25,72 +25,34 @@ const QUESTION_TYPES = [
   { id: 20, label: '장문 독해 (2)' },
 ];
 
-function QuestionCard({ type, result, status }) {
-  const [showAnswer, setShowAnswer] = useState(false);
-
-  let questionBody = result;
-  let answerPart = '';
-
-  if (result) {
-    const answerIdx = result.indexOf('【정답】');
-    if (answerIdx !== -1) {
-      questionBody = result.substring(0, answerIdx).trim();
-      answerPart = result.substring(answerIdx).trim();
-    }
-  }
-
-  return (
-    <div className={styles.card}>
-      <div className={styles.cardHeader}>
-        <span className={styles.typeNum}>{String(type.id).padStart(2, '0')}</span>
-        <span className={styles.typeLabel}>{type.label}</span>
-        {status === 'loading' && <span className={styles.statusBadge}>생성 중...</span>}
-        {status === 'done' && <span className={`${styles.statusBadge} ${styles.done}`}>완료</span>}
-        {status === 'error' && <span className={`${styles.statusBadge} ${styles.error}`}>오류</span>}
-      </div>
-      <div className={styles.cardBody}>
-        {status === 'idle' && <p className={styles.placeholder}>문제 생성 대기 중</p>}
-        {status === 'loading' && (
-          <div className={styles.skeleton}>
-            <div className={styles.skeletonLine} style={{ width: '90%' }} />
-            <div className={styles.skeletonLine} style={{ width: '75%' }} />
-            <div className={styles.skeletonLine} style={{ width: '82%' }} />
-            <div className={styles.skeletonLine} style={{ width: '60%' }} />
-          </div>
-        )}
-        {(status === 'done' || status === 'error') && (
-          <>
-            <pre className={styles.questionText}>{questionBody || result}</pre>
-            {answerPart && (
-              <>
-                <button
-                  className={styles.answerToggle}
-                  onClick={() => setShowAnswer(v => !v)}
-                >
-                  {showAnswer ? '정답·해설 숨기기 ▲' : '정답·해설 보기 ▼'}
-                </button>
-                {showAnswer && (
-                  <div className={styles.answerBox}>
-                    <pre>{answerPart}</pre>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
+const PROMPTS = {
+  1: (p) => `다음 영어 지문을 읽고, "글의 목적 파악" 유형의 수능 문제를 만들어줘. 필자가 글을 쓴 목적을 묻는 5지선다 문제를 만들고, 정답과 해설도 포함해줘.\n문제 형식: "다음 글의 목적으로 가장 적절한 것은?"\n\n[지문]\n${p}`,
+  2: (p) => `다음 영어 지문을 읽고, "심경 변화 파악" 유형의 수능 문제를 만들어줘. 글에 나타난 인물의 심경 변화를 묻는 5지선다 문제를 만들고, 정답과 해설도 포함해줘.\n문제 형식: "밑줄 친 부분에 나타난 화자의 심경 변화로 가장 적절한 것은?"\n\n[지문]\n${p}`,
+  3: (p) => `다음 영어 지문을 읽고, "함축적 의미 파악" 유형의 수능 문제를 만들어줘. 밑줄 친 표현의 함축적 의미를 묻는 5지선다 문제를 만들고, 정답과 해설도 포함해줘. 지문에서 적절한 구절에 밑줄을 표시해줘.\n\n[지문]\n${p}`,
+  4: (p) => `다음 영어 지문을 읽고, "요지 파악" 유형의 수능 문제를 만들어줘. 글의 요지를 묻는 5지선다 문제를 만들고, 정답과 해설도 포함해줘.\n문제 형식: "다음 글의 요지로 가장 적절한 것은?"\n\n[지문]\n${p}`,
+  5: (p) => `다음 영어 지문을 읽고, "주장 파악" 유형의 수능 문제를 만들어줘. 글에서 필자가 주장하는 바를 묻는 5지선다 문제를 만들고, 정답과 해설도 포함해줘.\n문제 형식: "다음 글에서 필자가 주장하는 바로 가장 적절한 것은?"\n\n[지문]\n${p}`,
+  6: (p) => `다음 영어 지문을 읽고, "주제 파악" 유형의 수능 문제를 만들어줘. 글의 주제를 묻는 5지선다 문제(영어 선택지)를 만들고, 정답과 해설도 포함해줘.\n문제 형식: "다음 글의 주제로 가장 적절한 것은?"\n\n[지문]\n${p}`,
+  7: (p) => `다음 영어 지문을 읽고, "제목 파악" 유형의 수능 문제를 만들어줘. 글의 제목을 묻는 5지선다 문제(영어 선택지)를 만들고, 정답과 해설도 포함해줘.\n문제 형식: "다음 글의 제목으로 가장 적절한 것은?"\n\n[지문]\n${p}`,
+  8: (p) => `다음 영어 지문을 읽고, "도표 정보 파악" 유형의 수능 문제를 만들어줘. 지문 내용을 바탕으로 가상의 도표를 텍스트로 묘사하고, 도표의 내용과 일치하지 않는 것을 고르는 5지선다 문제를 만들고, 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  9: (p) => `다음 영어 지문을 읽고, "내용 일치·불일치 (설명문)" 유형의 수능 문제를 만들어줘. 글의 내용과 일치하지 않는 것을 고르는 5지선다 문제(선택지는 한국어)를 만들고, 정답과 해설도 포함해줘.\n문제 형식: "다음 글의 내용과 일치하지 않는 것은?"\n\n[지문]\n${p}`,
+  10: (p) => `다음 영어 지문을 읽고, "내용 일치·불일치 (실용문)" 유형의 수능 문제를 만들어줘. 안내문/광고문 형식으로 재구성하여 내용과 일치하지 않는 것을 고르는 5지선다 문제(선택지는 한국어)를 만들고, 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  11: (p) => `다음 영어 지문을 읽고, "어법 정확성 파악" 유형의 수능 문제를 만들어줘. 지문에서 5군데에 밑줄(①②③④⑤)을 치고, 어법상 틀린 것을 고르는 문제를 만들어줘. 반드시 하나만 틀려야 하며, 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  12: (p) => `다음 영어 지문을 읽고, "어휘 적절성 파악" 유형의 수능 문제를 만들어줘. 지문에서 5개 단어에 밑줄을 치고 각각 적절한/부적절한 단어를 괄호로 제시하여, 문맥상 쓰임이 적절하지 않은 것을 고르는 문제를 만들고, 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  13: (p) => `다음 영어 지문을 읽고, "빈칸 내용 추론 (1)" 유형의 수능 문제를 만들어줘. 지문의 핵심 단어/구절에 빈칸을 만들고, 빈칸에 알맞은 표현을 고르는 5지선다 문제(영어 선택지)를 만들고, 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  14: (p) => `다음 영어 지문을 읽고, "빈칸 내용 추론 (2)" 유형의 수능 문제를 만들어줘. 앞의 빈칸 추론과 다른 위치에 빈칸을 만들고, 빈칸에 알맞은 표현을 고르는 5지선다 문제(영어 선택지)를 만들고, 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  15: (p) => `다음 영어 지문을 읽고, "흐름에 무관한 문장 찾기" 유형의 수능 문제를 만들어줘. 지문에 흐름과 무관한 문장 하나를 ①②③④⑤로 표시하여 삽입하고, 무관한 문장을 찾는 문제를 만들고, 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  16: (p) => `다음 영어 지문을 읽고, "문단 내 글의 순서 파악" 유형의 수능 문제를 만들어줘. 지문을 도입부와 (A)(B)(C) 세 단락으로 나누고, 올바른 순서를 찾는 5지선다 문제를 만들고, 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  17: (p) => `다음 영어 지문을 읽고, "문단 속에 문장 넣기" 유형의 수능 문제를 만들어줘. 주어진 문장을 지문의 ①②③④⑤ 중 알맞은 위치에 넣는 문제를 만들고, 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  18: (p) => `다음 영어 지문을 읽고, "문단 요약" 유형의 수능 문제를 만들어줘. 지문의 내용을 요약한 한 문장에서 빈칸 (A)(B) 2개를 만들고, 각각에 알맞은 단어를 고르는 문제(각 빈칸에 3개 선택지)를 만들고, 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  19: (p) => `다음 영어 지문을 읽고, "장문 독해 (1)" 유형의 수능 문제를 만들어줘. 2개의 문제를 만들어줘: (1) 글의 제목 (2) 빈칸 추론. 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+  20: (p) => `다음 영어 지문을 읽고, "장문 독해 (2)" 유형의 수능 문제를 만들어줘. 3개의 문제를 만들어줘: (1) 어휘 적절성 (2) 내용 일치 (3) 빈칸 추론. 정답과 해설도 포함해줘.\n\n[지문]\n${p}`,
+};
 
 export default function Home() {
   const [passage, setPassage] = useState('');
   const [selected, setSelected] = useState(new Set(QUESTION_TYPES.map(t => t.id)));
-  const [statuses, setStatuses] = useState({});
-  const [results, setResults] = useState({});
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
-  const [generated, setGenerated] = useState(false);
+  const [generatedPrompt, setGeneratedPrompt] = useState('');
+  const [copied, setCopied] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -110,7 +72,29 @@ export default function Home() {
     else setSelected(new Set(QUESTION_TYPES.map(t => t.id)));
   };
 
-  const extractTextFromImage = useCallback(async (file) => {
+  const generatePrompt = () => {
+    if (!passage.trim()) { alert('영어 지문을 입력해주세요.'); return; }
+    if (selected.size === 0) { alert('문제 유형을 하나 이상 선택해주세요.'); return; }
+
+    const selectedTypes = QUESTION_TYPES.filter(t => selected.has(t.id));
+    const intro = `당신은 수능 영어 문제 출제 전문가입니다. 아래 영어 지문을 바탕으로 총 ${selectedTypes.length}개의 수능 유형 문제를 만들어주세요. 각 문제는 실제 수능 형식을 정확히 따르고, 정답과 해설은 【정답】【해설】 형식으로 작성해주세요.\n\n${'='.repeat(50)}\n\n`;
+
+    const parts = selectedTypes.map((t, i) =>
+      `[문제 ${i + 1}] ${t.label}\n${PROMPTS[t.id](passage)}`
+    );
+
+    const full = intro + parts.join('\n\n' + '-'.repeat(50) + '\n\n');
+    setGeneratedPrompt(full);
+    setCopied(false);
+  };
+
+  const copyPrompt = async () => {
+    await navigator.clipboard.writeText(generatedPrompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const extractTextFromImage = async (file) => {
     if (!file || !file.type.startsWith('image/')) {
       alert('이미지 파일만 업로드 가능합니다.');
       return;
@@ -118,30 +102,11 @@ export default function Home() {
     setIsExtracting(true);
     setPreviewUrl(URL.createObjectURL(file));
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const base64 = e.target.result.split(',')[1];
-      const mediaType = file.type;
-      try {
-        const res = await fetch('/api/extract-text', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageBase64: base64, mediaType }),
-        });
-        const data = await res.json();
-        if (data.text) {
-          setPassage(data.text);
-        } else {
-          alert('텍스트 추출에 실패했습니다: ' + (data.error || '알 수 없는 오류'));
-        }
-      } catch (err) {
-        alert('오류가 발생했습니다: ' + err.message);
-      } finally {
-        setIsExtracting(false);
-      }
-    };
-    reader.readAsDataURL(file);
-  }, []);
+    // No API — just show image and let user type/paste manually
+    // But we try to use browser-side if available
+    setIsExtracting(false);
+    alert('이미지가 업로드되었습니다. 지문을 직접 아래 텍스트 박스에 입력해주세요.');
+  };
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -154,49 +119,6 @@ export default function Home() {
     const file = e.dataTransfer.files?.[0];
     if (file) extractTextFromImage(file);
   };
-
-  const generate = useCallback(async () => {
-    if (!passage.trim()) { alert('영어 지문을 입력해주세요.'); return; }
-    if (selected.size === 0) { alert('문제 유형을 하나 이상 선택해주세요.'); return; }
-    if (isGenerating) return;
-
-    const selectedTypes = QUESTION_TYPES.filter(t => selected.has(t.id));
-    setIsGenerating(true);
-    setGenerated(true);
-    setProgress({ done: 0, total: selectedTypes.length });
-    setResults({});
-    const initStatus = {};
-    selectedTypes.forEach(t => { initStatus[t.id] = 'loading'; });
-    setStatuses(initStatus);
-
-    let done = 0;
-    for (const type of selectedTypes) {
-      try {
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ passage, typeId: type.id }),
-        });
-        const data = await res.json();
-        if (data.result) {
-          setResults(prev => ({ ...prev, [type.id]: data.result }));
-          setStatuses(prev => ({ ...prev, [type.id]: 'done' }));
-        } else {
-          setResults(prev => ({ ...prev, [type.id]: data.error || '오류가 발생했습니다.' }));
-          setStatuses(prev => ({ ...prev, [type.id]: 'error' }));
-        }
-      } catch (e) {
-        setResults(prev => ({ ...prev, [type.id]: '네트워크 오류: ' + e.message }));
-        setStatuses(prev => ({ ...prev, [type.id]: 'error' }));
-      }
-      done++;
-      setProgress({ done, total: selectedTypes.length });
-    }
-
-    setIsGenerating(false);
-  }, [passage, selected, isGenerating]);
-
-  const generatedTypes = QUESTION_TYPES.filter(t => statuses[t.id]);
 
   return (
     <div className={styles.page}>
@@ -213,68 +135,29 @@ export default function Home() {
       <main className={styles.main}>
         <div className={styles.inputSection}>
 
-          {/* Image Upload */}
-          <div className={styles.panel}>
-            <label className={styles.panelLabel}>
-              <span>사진으로 지문 입력</span>
-              {isExtracting && <span className={styles.extractingBadge}>인식 중...</span>}
-            </label>
-            <div
-              className={`${styles.dropZone} ${dragOver ? styles.dragOver : ''} ${isExtracting ? styles.extracting : ''}`}
-              onClick={() => !isExtracting && fileInputRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={handleDrop}
-            >
-              {isExtracting ? (
-                <div className={styles.extractingState}>
-                  <div className={styles.spinner} />
-                  <span>이미지에서 텍스트 인식 중...</span>
-                </div>
-              ) : previewUrl ? (
-                <div className={styles.previewState}>
-                  <img src={previewUrl} alt="업로드된 이미지" className={styles.previewImg} />
-                  <span className={styles.previewChange}>클릭하여 다른 이미지 선택</span>
-                </div>
-              ) : (
-                <div className={styles.dropZoneContent}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
-                  </svg>
-                  <span>이미지를 드래그하거나 클릭해서 업로드</span>
-                  <span className={styles.dropZoneSub}>교재 사진, 스캔본, 캡처 이미지 모두 가능 · JPG, PNG, WEBP</span>
-                </div>
-              )}
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={handleFileChange}
-            />
-          </div>
+          {/* Step 1 */}
+          <div className={styles.stepLabel}><span className={styles.stepNum}>1</span> 영어 지문 입력</div>
 
-          {/* Text Input */}
           <div className={styles.panel}>
             <label className={styles.panelLabel}>
-              <span>영어 지문 입력</span>
+              <span>직접 입력</span>
               <span className={styles.charCount}>{passage.length}자</span>
             </label>
             <textarea
               className={styles.textarea}
               value={passage}
               onChange={e => setPassage(e.target.value)}
-              placeholder="여기에 영어 지문을 직접 붙여넣거나, 위에서 이미지를 업로드하세요..."
+              placeholder="여기에 영어 지문을 붙여넣으세요..."
               rows={8}
             />
           </div>
 
-          {/* Type Selector */}
+          {/* Step 2 */}
+          <div className={styles.stepLabel}><span className={styles.stepNum}>2</span> 문제 유형 선택</div>
+
           <div className={styles.panel}>
             <div className={styles.typeHeader}>
-              <span className={styles.panelLabel}>문제 유형 선택</span>
+              <span className={styles.panelLabel}>유형 선택 <span className={styles.selectedCount}>({selected.size}개 선택됨)</span></span>
               <button className={styles.toggleAllBtn} onClick={toggleAll}>
                 {selected.size === QUESTION_TYPES.length ? '전체 해제' : '전체 선택'}
               </button>
@@ -293,48 +176,47 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Step 3 */}
+          <div className={styles.stepLabel}><span className={styles.stepNum}>3</span> 프롬프트 생성</div>
+
           <button
             className={styles.generateBtn}
-            onClick={generate}
-            disabled={isGenerating || isExtracting || selected.size === 0}
+            onClick={generatePrompt}
+            disabled={selected.size === 0}
           >
-            {isGenerating
-              ? `생성 중... (${progress.done} / ${progress.total})`
-              : `문제 생성하기 (${selected.size}개 유형)`}
+            프롬프트 생성하기 ({selected.size}개 유형)
           </button>
 
-          {isGenerating && (
-            <div className={styles.progressBar}>
-              <div
-                className={styles.progressFill}
-                style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
-              />
+          {/* Result */}
+          {generatedPrompt && (
+            <div className={styles.promptResult}>
+              <div className={styles.promptResultHeader}>
+                <span className={styles.promptResultTitle}>생성된 프롬프트</span>
+                <div className={styles.promptActions}>
+                  <a
+                    href="https://chatgpt.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.openAiBtn}
+                  >
+                    ChatGPT 열기 ↗
+                  </a>
+                  <button className={`${styles.copyBtn} ${copied ? styles.copied : ''}`} onClick={copyPrompt}>
+                    {copied ? '✓ 복사됨!' : '복사하기'}
+                  </button>
+                </div>
+              </div>
+              <div className={styles.promptGuide}>
+                👆 <strong>복사하기</strong> 누른 뒤 ChatGPT / Gemini / Claude에 붙여넣기 하세요
+              </div>
+              <pre className={styles.promptBox}>{generatedPrompt}</pre>
             </div>
           )}
         </div>
-
-        {generated && (
-          <div className={styles.results}>
-            <div className={styles.resultsHeader}>
-              <h2 className={styles.resultsTitle}>생성된 문제</h2>
-              {!isGenerating && (
-                <span className={styles.resultsMeta}>{progress.done}개 완료</span>
-              )}
-            </div>
-            {generatedTypes.map(type => (
-              <QuestionCard
-                key={type.id}
-                type={type}
-                result={results[type.id]}
-                status={statuses[type.id] || 'idle'}
-              />
-            ))}
-          </div>
-        )}
       </main>
 
       <footer className={styles.footer}>
-        <p>Powered by Claude AI · ExamCraft</p>
+        <p>Powered by ExamCraft · 수능 영어 문제 프롬프트 생성기</p>
       </footer>
     </div>
   );
