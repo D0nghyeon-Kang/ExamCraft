@@ -9,13 +9,24 @@ function splitIntoBlocks(rawText) {
   const text = rawText.trim();
   if (!text) return [];
 
+  const isMeaningful = (s) => {
+    // A block must have more than just a title line / whitespace to count as real content.
+    const stripped = s.replace(/^\[문제\s*\d+\][^\n]*\n?/, '').trim();
+    return stripped.length > 0;
+  };
+
   const bySeparator = text
     .split(/\n-{3,}\n|\n={3,}\n/g)
     .map(s => s.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter(isMeaningful);
   if (bySeparator.length > 1) return bySeparator;
 
-  const byMarker = text.split(/(?=\[문제\s*\d+\])/g).map(s => s.trim()).filter(Boolean);
+  const byMarker = text
+    .split(/(?=\[문제\s*\d+\])/g)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .filter(isMeaningful);
   if (byMarker.length > 1) return byMarker;
 
   return [text];
@@ -132,7 +143,9 @@ function buildDoc(titleText, children) {
 
 // Generates TWO separate .docx files: one with questions only, one with answers/explanations only.
 export async function generateSplitDocx(rawText, baseTitle = 'ExamCraft') {
-  const blocks = splitIntoBlocks(rawText).map(splitBlock);
+  const blocks = splitIntoBlocks(rawText)
+    .map(splitBlock)
+    .filter(b => b.body.trim().length > 0 || b.answer.trim().length > 0);
 
   const questionChildren = [];
   const answerChildren = [];

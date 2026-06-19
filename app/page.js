@@ -51,7 +51,7 @@ const PROMPTS = {
 
 export default function Home() {
   const [passage, setPassage] = useState('');
-  const [selected, setSelected] = useState(new Set(QUESTION_TYPES.map(t => t.id)));
+  const [selected, setSelected] = useState(new Set());
   const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [copied, setCopied] = useState(false);
   const [aiResponse, setAiResponse] = useState('');
